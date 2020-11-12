@@ -1,6 +1,12 @@
 <html>
   <head>
     <script>
+      function toHexString(byteArray) {
+        return Array.from(byteArray, function(byte) {
+          return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+        }).join(' ')
+      }
+      
       var openFile = function (event) {
         var input = event.target;
 
@@ -9,9 +15,15 @@
           var text = reader.result;
           var node = document.getElementById("output");
           node.innerText = text;
-          console.log(reader.result.substring(0, 200));
+		  
+          for (var i = 0; i < reader.result.byteLength; i += 16) {
+            var idView = new Uint8Array(reader.result, i, 16); 
+            console.log(toHexString(idView));
+          }
         };
-        reader.readAsText(input.files[0]);
+        
+        if (input.files.length > 0)
+          reader.readAsArrayBuffer(input.files[0]);
       };
     </script>
   </head>
