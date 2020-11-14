@@ -6,10 +6,10 @@
     
     
     <script>
-      function toHexString(byteArray) {
+      function toHexString(byteArray, joinChar) {
         return Array.from(byteArray, function(byte) {
           return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-        }).join(' ')
+        }).join(joinChar)
       }
       
       var openFile = function (event) {
@@ -18,23 +18,10 @@
         var reader = new FileReader();
         
         reader.onload = function () {
-          var buffer = reader.result;
-
-          // node.innerText = text;
-//          console.log(reader.result);
-          // console.log(reader.result)
-          // console.log(reader.result.byteLength)
-
-          // reader.result should be an ArrayBuffer
-          // var enc = new TextDecoder("utf-8"); // how to use this??
-          
-          var sourceBuffer = buffer;
-          var sourceString = buf2hex(buffer);
-          
-          console.log(sourceString);
+          var edidBuffer = new Uint8Array(reader.result);
           
           // set to output
-          $("#output").text(sourceString);
+          $("#output").text(toHexString(edidBuffer, ''));
 
           // core builder
           $('#out_table_head').empty();
@@ -45,7 +32,7 @@
           htmlStr = '<tr><td>Bytes</td><td>Description</td></tr><tr><td>0-19</td><td>Header information</td></tr>';
           $('#out_table_head').append(htmlStr);
 
-          htmlStr = headerParser(sourceString.substring(0, 40)); // 20 bytes = 40 letters
+          htmlStr = abccc(edidBuffer.slice(0, 20));
           $('#out_table_body').append(htmlStr);
         
         
@@ -53,30 +40,32 @@
         // reader.readAsText(input.files[0]);
         reader.readAsArrayBuffer(input.files[0]);
       };
-
-      
     </script>
 
     <!-- Simple Header Parser -->
     <script>
-      var headerParser = function(inStr) {
-        var section1 = inStr.substring(0, 16); // section 1
-        var section2 = inStr.substring(16, 20); // section 2
-        console.info('section2='+section2);
+    
+      // parse Header Information (bytes 0 ~ byte 19)
+      var abccc = function(edid) {
         var buildStr = '';
-        buildStr += '<tr><td> 0 - 7 </td><td>' + section1 + '</td></tr>';
-        buildStr += '<tr><td> 8 - 9 </td>';
-        section2binStr = hex2bin(section2);
-        console.info('section2binStr='+section2binStr);
-        console.info('section2binStr='+section2binStr.substring(1, 6));
-        console.info('section2binStr='+section2binStr.substring(6, 11));
-        console.info('section2binStr='+section2binStr.substring(11, 16));
-        buildStr += '<td>' 
-                  + binaryToChar(section2binStr.substring(1, 6)) 
-                  + binaryToChar(section2binStr.substring(6, 11)) 
-                  + binaryToChar(section2binStr.substring(11, 16)) 
-                  + '</td>';
-        buildStr += '</tr>';
+        var manufacturerID = '';
+        
+        // manufacturer ID: big-endian 16-bit value made up of three 5-bit letters
+        //       0xxx xxyy yyyz zzzz
+        // mask:    7    c    0    0
+        //          0    3    E    0
+        //          0    0    1    F
+        manufacturerID += String.fromCharCode(((((edid[8] << 8) + edid[9]) & 0x7c00) >> 10) + 0x40);
+        manufacturerID += String.fromCharCode(((((edid[8] << 8) + edid[9]) & 0x03E0) >> 5) + 0x40);
+        manufacturerID += String.fromCharCode((edid[9] & 0x001F) + 0x40);
+        buildStr += '<tr><td> 0 -  7 </td><td>' + toHexString(edid.slice(0, 8), ' ') + '</td></tr>';
+        buildStr += '<tr><td> 8 -  9 </td><td>' + manufacturerID + '</td></tr>';
+        buildStr += '<tr><td>10 - 11 </td><td>' + toHexString(edid.slice(10, 12), ' ') + '</td></tr>';
+        buildStr += '<tr><td>12 - 15 </td><td>' + toHexString(edid.slice(12, 16), ' ') + '</td></tr>';
+        buildStr += '<tr><td>16 - 16 </td><td>' + toHexString(edid.slice(16, 17), ' ') + '</td></tr>';
+        buildStr += '<tr><td>17 - 17 </td><td>' + toHexString(edid.slice(17, 18), ' ') + '</td></tr>';
+        buildStr += '<tr><td>18 - 19 </td><td>' + toHexString(edid.slice(18, 20), ' ') + '</td></tr>';
+        
         return buildStr;
       }
 
