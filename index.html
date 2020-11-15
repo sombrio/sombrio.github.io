@@ -4,28 +4,43 @@
     <!-- import jquery -->
     <script src="https://code.jquery.com/jquery-3.5.1.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
     
-    
+    <script>
+      var BIT0 = 0x01;
+      var BIT1 = 0x02;
+      var BIT2 = 0x04;
+      var BIT3 = 0x08;
+      var BIT4 = 0x10;
+      var BIT5 = 0x20;
+      var BIT6 = 0x40;
+      var BIT7 = 0x80;
+      
+      var EDID_VERSION = '';
+    </script>
+
+
     <script>
       function toHexString(byteArray, joinChar) {
         return Array.from(byteArray, function(byte) {
           return ('0' + (byte & 0xFF).toString(16)).slice(-2);
         }).join(joinChar)
       }
-      
+
       var openFile = function (event) {
         var input = event.target;
 
         var reader = new FileReader();
-        
+
         reader.onload = function () {
           var edidBuffer = new Uint8Array(reader.result);
-          
+
           // set to output
           $("#output").text(toHexString(edidBuffer, ''));
 
           // core builder
           $('#out_table_head').empty();
           $('#out_table_body').empty();
+          $('#out_table_head_basidDisplayParameter').empty();
+          $('#out_table_body_basidDisplayParameter').empty();
           var htmlStr = '';
 
           // header
@@ -34,8 +49,14 @@
 
           htmlStr = abccc(edidBuffer.slice(0, 20));
           $('#out_table_body').append(htmlStr);
-        
-        
+          
+          // Basic Display Information
+          htmlStr = '<tr><td>Bytes</td><td>Description</td></tr><tr><td>20-24</td><td>Basic Display Parameter</td></tr>';
+          $('#out_table_head_basidDisplayParameter').append(htmlStr);
+          
+          htmlStr = basicDisplayParameter(edidBuffer.slice(20, 25));
+          $('#out_table_body_basidDisplayParameter').append(htmlStr);
+
         };
         // reader.readAsText(input.files[0]);
         reader.readAsArrayBuffer(input.files[0]);
@@ -44,13 +65,14 @@
 
     <!-- Simple Header Parser -->
     <script>
-    
+
       // parse Header Information (bytes 0 ~ byte 19)
       var abccc = function(edid) {
         var buildStr = '';
         var manufacturerID = '';
-        
+
         // manufacturer ID: big-endian 16-bit value made up of three 5-bit letters
+        //          [8]       [9]
         //       0xxx xxyy yyyz zzzz
         // mask:    7    c    0    0
         //          0    3    E    0
@@ -58,6 +80,12 @@
         manufacturerID += String.fromCharCode(((((edid[8] << 8) + edid[9]) & 0x7c00) >> 10) + 0x40);
         manufacturerID += String.fromCharCode(((((edid[8] << 8) + edid[9]) & 0x03E0) >> 5) + 0x40);
         manufacturerID += String.fromCharCode((edid[9] & 0x001F) + 0x40);
+        
+        if (edid[18] == 0x01 && edid[19] == 0x03)
+          EDID_VERSION = '1.3';
+        else if (edid[18] == 0x01 && edid[19] == 0x04)
+          EDID_VERSION = '1.4';
+        
         buildStr += '<tr><td> 0 -  7 </td><td>' + toHexString(edid.slice(0, 8), ' ') + '</td></tr>';
         buildStr += '<tr><td> 8 -  9 </td><td>' + manufacturerID + '</td></tr>';
         buildStr += '<tr><td>10 - 11 </td><td>' + toHexString(edid.slice(10, 12), ' ') + '</td></tr>';
@@ -65,10 +93,184 @@
         buildStr += '<tr><td>16 - 16 </td><td>' + toHexString(edid.slice(16, 17), ' ') + '</td></tr>';
         buildStr += '<tr><td>17 - 17 </td><td>' + toHexString(edid.slice(17, 18), ' ') + '</td></tr>';
         buildStr += '<tr><td>18 - 19 </td><td>' + toHexString(edid.slice(18, 20), ' ') + '</td></tr>';
-        
+
         return buildStr;
       }
+    </script>
 
+    <script>
+      function findAspectRatio(ratio) {
+        if (ratio == 34)
+          return "4:3";
+        if (ratio == 79)
+          return "16:9";
+        else if (ratio = 61)
+          return "16:10";
+        else
+          return "undefined";
+      }
+      // parse Basic Display Parameter (bytes 20 ~ byte 24)
+      var basicDisplayParameter = function(edid) {
+        var buildStr = '';
+        
+        // 14h
+        var videoInputParameter = adr14h = edid[0];
+        // display type is digital
+        if (videoInputParameter & BIT7) {
+          var bitDepth = '';
+          var videoInterface = '';
+          var bd = (videoInputParameter & (BIT6|BIT5|BIT4)) >> 4;
+          var vi = (videoInputParameter & (BIT3|BIT2|BIT1|BIT0));
+
+          if (bd == 0)
+            bitDepth = 'undefined';
+          else if (bd == 7)
+            bitDepth = 'reserved';
+          else
+            bitDepth = 6 + 2*(bd-1);
+            
+          if (vi == 0)
+            videoInterface = 'undefined';
+          else if (vi == 1)
+            videoInterface = 'DVI';
+          else if (vi == 2)
+            videoInterface = 'HDMI-a';
+          else if (vi == 3)
+            videoInterface = 'HDMI-b';
+          else if (vi == 4)
+            videoInterface = 'MDDI';
+          else if (vi == 5)
+            videoInterface = 'DisplayPort';
+          else
+            videoInterface = 'undefined';
+
+          buildStr += '<tr><td> 20 - 20 </td><td>' + 'bit depth: ' + bitDepth + '</td></tr>';
+        } else {
+          // display type is analog
+          var sl = (videoInputParameter & (BIT6|BIT5)) >> 5;
+          var syncLevel = '';
+          if (sl == 0)
+            syncLevel = '+0.7/-0.3 V';
+          else if (sl == 1)
+            syncLevel = '+0.714/−0.286 V';
+          else if (sl == 2)
+            syncLevel = '+1.0/−0.4 V';
+          else
+            syncLevel = '+0.7/0 V';
+
+          var videoSetup = '';
+          if (videoInputParameter & BIT4)
+            videoSetup = 'Video Setup: Blank-to-Black setup or pedestal';
+          else
+            videoSetup = 'Video Setup: Blank Level = Black Level';
+            
+          var synchronizationTypes = '';
+          if (videoInputParameter & BIT3)
+            synchronizationTypes = 'Separate Sync H & V Signals are supported';
+          else
+            synchronizationTypes = 'Separate Sync H & V Signals are not supported';
+            
+          if (videoInputParameter & BIT2)
+            synchronizationTypes += 'Composite Sync Signal on Horizontal is supported';
+          else
+            synchronizationTypes += 'Composite Sync Signal on Horizontal is not supported';
+            
+          if (videoInputParameter & BIT1)
+            synchronizationTypes += 'Composite Sync Signal on Green Video is supported';
+          else
+            synchronizationTypes += 'Composite Sync Signal on Green Video is not supported';
+
+          var Serrations = '';
+          if (videoInputParameter & BIT0)
+            Serrations = 'Serration on the Vertical Sync is supported';
+          else
+            Serrations = 'Serration on the Vertical Sync is not supported';
+            
+          //return '<tr><td> 20 - 20 </td><td>' + syncLevel + videoSetup + synchronizationTypes + Serrations + '</td></tr>';
+        }
+        
+        // 15h, 16h
+        var adr15h = edid[1];
+        var adr16h = edid[2];
+        var sizeOrRatio = '';
+        if (adr15h == 0 && adr16h == 0)
+          sizeOrRatio = 'undefined';
+        else if (adr16h != 0) {
+          // cm
+          sizeOrRatio = "screen size: " + adr15h + " x " + adr16h + " cm";
+          //sizeOrRation = 
+        } else {
+          // ratio
+          sizeOrRatio = "aspect ratio: " + findAspectRatio(ratio);
+        }
+        
+        <!-- if 225, gamma is defined by DI-EXT block. -->
+        // 17h
+        var storedGamma = edid[3];
+        var gamma = (storedGamma+100)/100;
+        
+        // 18h
+        var adr18h = edid[4];
+        if (adr18h & BIT7)
+          buildStr += 'Standby Mode is supported.';
+        else
+          buildStr += 'Standby Mode is not supported.';
+          
+        if (adr18h & BIT6)
+          buildStr += 'Suspend Mode is supported.';
+        else
+          buildStr += 'Suspend Mode is not supported.';
+          
+        if (adr18h & BIT5)
+          buildStr += 'Active Off = Very Low Power is supported.';
+        else
+          buildStr += 'Active Off = Very Low Power is not supported.';
+          
+        var color = (adr18h & (BIT4|BIT3)) >> 3;
+        if (adr14h & BIT7) {
+          if (color == 0)
+            buildStr += 'RGB 4:4:4';
+          else if (color == 1)
+            buildStr += 'RGB 4:4:4 & YCrCb 4:4:4';
+          else if (color == 2)
+            buildStr += 'RGB 4:4:4 & YCrCb 4:2:2';
+          else {
+            buildStr += 'RGB 4:4:4 & YCrCb 4:4:4 & YCrCb 4:2:2';
+          }
+        }else {
+          if (color == 0)
+            buildStr += 'Monochrome or Grayscale display';
+          else if (color == 1)
+            buildStr += 'RGB color display';
+          else if (color == 2)
+            buildStr += 'Non-RGB color display';
+          else {
+            buildStr += 'undefined';
+          }
+        }
+        
+        if (adr18h & BIT2)
+          buildStr += 'sRGB Standard is the default color space.';
+        else
+          buildStr += 'sRGB Standard is not the default color space.';
+          
+        if (adr18h & BIT1)
+          buildStr += 'Preferred timing mode specified in descriptor block 1.';
+        else
+          buildStr += 'No preferred timing?';
+          
+        if (EDID_VERSION === '1.3') {
+          if (adr18h & BIT0)
+            buildStr += 'support for GTF';
+          else 
+            buildStr += 'no support for GTF';  
+        } else if (EDID_VERSION === '1.4') {
+          if (adr18h & BIT0)
+            buildStr += 'support for Continuous Frequency Display';
+          else 
+            buildStr += 'support for Non-Continuous Frequency (Multi-Mode) Display';  
+        }
+      }
     </script>
 
     <!-- common utils -->
@@ -84,14 +286,14 @@
         return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
       }
 
-      
+
       // hexchar to binarystring
-      // sample: 
+      // sample:
       var hex2bin = function(hex) {
         return (parseInt(hex, 16).toString(2)).padStart(hex.length * 4, '0');
       }
 
-      
+
       // binString to ascii
       var binaryToChar = function (binary) {
         return alpha[parseInt(binary, 2)];
@@ -105,6 +307,8 @@
       <table>
         <thead id="out_table_head"></thead>
         <tbody id="out_table_body"></tbody>
+        <thead id="out_table_head_basidDisplayParameter"></thead>
+        <tbody id="out_table_body_basidDisplayParameter"></tbody>
       </table>
     </div>
   </body>
