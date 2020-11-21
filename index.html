@@ -80,12 +80,6 @@
         }).join(joinChar)
       }
       
-      function toHexString(byteArray) {
-        return Array.from(byteArray, function(byte) {
-          return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-        })
-      }
-      
       var openFile = function (event) {
         var input = event.target;
 
@@ -95,7 +89,7 @@
           var edidBuffer = new Uint8Array(reader.result);
           
           for (var i = 0; i < edidBuffer.length; i++) {
-            $(String.format('#data{0}', i)).text((('0' + (edidBuffer[i] & 0xFF).toString(16).toUpperCase()).slice(-2)));
+            $(String.format('#data{0}', i)).text(toHexString(edidBuffer.slice(i, i+1)));
           }
 
           // set to output
